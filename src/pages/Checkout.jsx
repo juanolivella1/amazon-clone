@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { initMercadoPago, Wallet } from '@mercadopago/sdk-react'
-import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
+import { initMercadoPago, Wallet } from '@mercadopago/sdk-react'
 
 // Initialize MercadoPago with the public key
 initMercadoPago('TEST-d0f0e96d-6c3b-4150-8bd5-81bf28a8e0f6', {
@@ -31,54 +31,42 @@ export default function Checkout() {
       navigate('/login')
       return
     }
-    fetchOrder()
+    fetchOrders()
   }, [user, navigate])
 
-  async function fetchOrder() {
+  async function fetchOrders() {
     try {
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
+      const { data, error } = await supabase
+        .from("orders")
         .select(`
-          *,
+          id, user_id, status, total, created_at,
           order_items (
-            *,
-            products (*)
+            id, order_id, quantity, price,
+            products (id, name, image_url, price)
           )
         `)
-        .eq('user_id', user.id)
-        .eq('status', 'pending')
-        .single()
-
-      if (orderError && orderError.code !== 'PGRST116') {
-        throw orderError
+        .eq("user_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+  
+      if (error) throw error;
+  
+      if (!data || data.length === 0) {
+        console.warn("No se encontraron órdenes pendientes.");
+        return;
       }
-
-      if (!order) {
-        setLoading(false)
-        return
-      }
-
-      setOrder(order)
-      await createPreference(order)
+  
+      setOrder(data); // ✅ Guardar todas las órdenes
     } catch (error) {
-      console.error('Error fetching order:', error)
-      setError('Error loading order')
+      console.error("Error al obtener las órdenes:", error);
+      setError("Error loading orders");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
-
-  async function createPreference(order) {
+  async function createPreference() {
     try {
       setPaymentInitialized(false)
-      const items = order.order_items.map(item => ({
-        title: item.products.name,
-        unit_price: parseFloat(item.products.price),
-        quantity: item.quantity,
-        currency_id: 'USD',
-        description: item.products.description,
-        picture_url: item.products.image_url
-      }))
 
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1000))
@@ -125,7 +113,7 @@ export default function Checkout() {
     )
   }
 
-  if (!order || order.order_items.length === 0) {
+  if (!order || !order.order_items || order.order_items.length === 0) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white p-6 rounded-lg shadow-md text-center">
@@ -138,106 +126,67 @@ export default function Checkout() {
           </button>
         </div>
       </div>
-    )
+    );
   }
 
   const subtotal = order.order_items.reduce(
     (sum, item) => sum + (item.quantity * item.products.price),
     0
   )
-  const shipping = 0 // Free shipping for demo
+  const shipping = 0
   const total = subtotal + shipping
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold mb-6">Checkout</h1>
-
-      {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
-          {error}
-          <button
-            onClick={() => setError(null)}
-            className="ml-2 text-red-800 hover:text-red-900"
-          >
-            Try Again
-          </button>
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <h2 className="text-lg font-medium mb-4">Shipping Address</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input
+            type="text"
+            placeholder="Full Name"
+            value={shippingAddress.fullName}
+            onChange={(e) => setShippingAddress({ ...shippingAddress, fullName: e.target.value })}
+            className="input-field"
+          />
+          <input
+            type="text"
+            placeholder="Address"
+            value={shippingAddress.address}
+            onChange={(e) => setShippingAddress({ ...shippingAddress, address: e.target.value })}
+            className="input-field"
+          />
+          <input
+            type="text"
+            placeholder="City"
+            value={shippingAddress.city}
+            onChange={(e) => setShippingAddress({ ...shippingAddress, city: e.target.value })}
+            className="input-field"
+          />
+          <input
+            type="text"
+            placeholder="State"
+            value={shippingAddress.state}
+            onChange={(e) => setShippingAddress({ ...shippingAddress, state: e.target.value })}
+            className="input-field"
+          />
+          <input
+            type="text"
+            placeholder="Zip Code"
+            value={shippingAddress.zipCode}
+            onChange={(e) => setShippingAddress({ ...shippingAddress, zipCode: e.target.value })}
+            className="input-field"
+          />
+          <input
+            type="text"
+            placeholder="Phone"
+            value={shippingAddress.phone}
+            onChange={(e) => setShippingAddress({ ...shippingAddress, phone: e.target.value })}
+            className="input-field"
+          />
         </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Shipping Information */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-medium mb-4">Shipping Information</h2>
-          <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Full Name</label>
-              <input
-                type="text"
-                required
-                className="input-field"
-                value={shippingAddress.fullName}
-                onChange={(e) => setShippingAddress({ ...shippingAddress, fullName: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Address</label>
-              <input
-                type="text"
-                required
-                className="input-field"
-                value={shippingAddress.address}
-                onChange={(e) => setShippingAddress({ ...shippingAddress, address: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">City</label>
-                <input
-                  type="text"
-                  required
-                  className="input-field"
-                  value={shippingAddress.city}
-                  onChange={(e) => setShippingAddress({ ...shippingAddress, city: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">State</label>
-                <input
-                  type="text"
-                  required
-                  className="input-field"
-                  value={shippingAddress.state}
-                  onChange={(e) => setShippingAddress({ ...shippingAddress, state: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">ZIP Code</label>
-                <input
-                  type="text"
-                  required
-                  className="input-field"
-                  value={shippingAddress.zipCode}
-                  onChange={(e) => setShippingAddress({ ...shippingAddress, zipCode: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Phone</label>
-                <input
-                  type="tel"
-                  required
-                  className="input-field"
-                  value={shippingAddress.phone}
-                  onChange={(e) => setShippingAddress({ ...shippingAddress, phone: e.target.value })}
-                />
-              </div>
-            </div>
-          </form>
-        </div>
-
-        {/* Order Summary */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
+        {error && <p className="text-red-500 mt-4">{error}</p>}
+        <div className="mt-6">
           <h2 className="text-lg font-medium mb-4">Order Summary</h2>
           <div className="space-y-4">
             {order.order_items.map((item) => (
@@ -258,52 +207,24 @@ export default function Checkout() {
                 </p>
               </div>
             ))}
-
-            <div className="border-t pt-4 space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>${subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Shipping</span>
-                <span>{shipping === 0 ? 'Free' : `$${shipping.toFixed(2)}`}</span>
-              </div>
-              <div className="flex justify-between font-bold text-lg">
-                <span>Total</span>
-                <span>${total.toFixed(2)}</span>
-              </div>
-            </div>
-
-            {paymentInitialized ? (
-              <div className="mt-6">
-                {preferenceId ? (
-                  <>
-                    <button
-                      onClick={handlePayment}
-                      className="w-full button-primary mb-4"
-                      disabled={!isValidShippingAddress()}
-                    >
-                      Place Order
-                    </button>
-                    <div className="mt-4 text-sm text-gray-500 text-center">
-                      <p>This is a test checkout. No actual charges will be made.</p>
-                      <p>Test Card: 5031 7557 3453 0604</p>
-                      <p>CVV: 123 | Expiry: 11/25</p>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center text-red-600">
-                    Error loading payment options. Please try again.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="mt-6 flex justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amazon-orange"></div>
-              </div>
-            )}
+          </div>
+          <div className="mt-4 text-right">
+            <p className="font-bold">Subtotal: ${subtotal.toFixed(2)}</p>
+            <p className="font-bold">Shipping: ${shipping.toFixed(2)}</p>
+            <p className="font-bold">Total: ${total.toFixed(2)}</p>
           </div>
         </div>
+        {paymentInitialized && (
+          <div className="mt-6">
+            <Wallet initialization={{ preferenceId }} />
+          </div>
+        )}
+        <button
+          onClick={handlePayment}
+          className="mt-6 button-primary w-full"
+        >
+          Place Order
+        </button>
       </div>
     </div>
   )

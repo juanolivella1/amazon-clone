@@ -5,109 +5,156 @@ import { useAuth } from '../contexts/AuthContext'
 
 export default function Cart() {
   const [cartItems, setCartItems] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [  loading, setLoading] = useState(true);
   const { user } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login')
-      return
-    }
-    fetchCartItems()
-  }, [user, navigate])
+    if (!user) return;
+    fetchCartItems();
+  }, [user]);
 
   async function fetchCartItems() {
     try {
-      // First, try to get the pending order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('status', 'pending')
-        .maybeSingle()
-
-      if (orderError) throw orderError
-
-      // If there's no pending order, return empty cart
-      if (!order) {
-        setCartItems([])
-        setLoading(false)
-        return
+      const { data: orders, error: orderError } = await supabase
+        .from("orders")
+        .select("id, status")
+        .eq("user_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+  
+      if (orderError) throw orderError;
+  
+      if (!orders || orders.length === 0) {
+        setCartItems([]);
+        setLoading(false);
+        return;
       }
-
-      // Get the order items
-      const { data: items, error: itemsError } = await supabase
-        .from('order_items')
-        .select(`
-          *,
-          products (*)
-        `)
-        .eq('order_id', order.id)
-
-      if (itemsError) throw itemsError
-      setCartItems(items || [])
-
-      // Update order total
-      const total = (items || []).reduce((sum, item) => {
-        return sum + (item.quantity * item.products.price)
-      }, 0)
-
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({ total })
-        .eq('id', order.id)
-
-      if (updateError) throw updateError
+  
+      const allItems = [];
+  
+      for (const order of orders) {
+        const { data: items, error: itemsError } = await supabase
+          .from("order_items")
+          .select("*, products(*)")
+          .eq("order_id", order.id);
+  
+        if (itemsError) throw itemsError;
+        allItems.push(...items);
+      }
+  
+      setCartItems(allItems);
     } catch (error) {
-      console.error('Error fetching cart:', error)
-      setCartItems([])
+      console.error("Error fetching cart:", error);
+      setCartItems([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
-
-  async function updateQuantity(itemId, newQuantity) {
+  async function removeItem(itemId) {
     try {
-      const { error } = await supabase
+      await supabase.from('order_items').delete().eq('id', itemId)
+      const { data: remainingItems } = await supabase
         .from('order_items')
-        .update({ quantity: newQuantity })
-        .eq('id', itemId)
+        .select('*')
+        .eq('order_id', cartItems[0]?.order_id)
 
-      if (error) throw error
+      if (!remainingItems.length) {
+        await supabase.from('orders').delete().eq('id', cartItems[0]?.order_id)
+      }
       fetchCartItems()
     } catch (error) {
-      console.error('Error updating quantity:', error)
+      console.error('Error removing item:', error)
     }
   }
 
- async function removeItem(itemId) {
-  try {
-    await supabase.from('order_items').delete().eq('id', itemId);
-    const { data: remainingItems } = await supabase
-      .from('order_items')
-      .select('*')
-      .eq('order_id', cartItems[0]?.order_id); // Revisar si quedan productos
-
-
-        if (!remainingItems.length) {
-          await supabase.from('orders').delete().eq('id', cartItems[0]?.order_id);
-        }
+  async function updateQuantity(itemId, quantity) {
+    try {
+      await supabase
+        .from('order_items')
+        .update({ quantity })
+        .eq('id', itemId);
       fetchCartItems();
-  } catch (error) {
-    console.error('Error removing item:', error);
+    } catch (error) {
+      console.error('Error updating quantity:', error);
+    }
   }
-}
-  const total = cartItems.reduce((sum, item) => {
-    return sum + (item.quantity * item.products.price)
-  }, 0)
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amazon-orange"></div>
-      </div>
-    )
+  async function handleCheckout() {
+    try {
+      if (!cartItems.length) {
+        console.error("No hay productos en el carrito.");
+        return;
+      }
+  
+      const total = cartItems.reduce((sum, item) => sum + (item.quantity * item.products.price), 0);
+      const orderId = cartItems[0]?.order_id;
+  
+      if (!orderId) {
+        console.error("No se encontró una orden pendiente.");
+        return;
+      }
+  
+      // Obtener la orden actual antes de modificarla
+      const { data: currentOrder, error: orderError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .single();
+  
+      if (orderError) throw orderError;
+  
+      // Insertar una nueva orden con estado "completed"
+      const { data: newOrder, error: newOrderError } = await supabase
+        .from('orders')
+        .insert([{ 
+          user_id: currentOrder.user_id, 
+          total: total, 
+          status: 'pending',  // ✅ Cambiar a 'pending' para seguir con el pago
+          created_at: new Date()
+        }])
+        .select()
+        .single();
+  
+      if (newOrderError) throw newOrderError;
+  
+      console.log("Nueva orden creada:", newOrder);
+  
+      if (!newOrder || !newOrder.id) {
+        console.error("Error: newOrder.id no está definido");
+        return;
+      }
+  
+      // Esperar un momento para confirmar la orden en la base de datos
+      await new Promise(res => setTimeout(res, 500));
+  
+      // Insertar productos en la nueva orden
+      const orderItemsPromises = cartItems.map(async (item) => {
+        if (!item.products || !item.products.id || !item.quantity) {
+          console.error("Datos inválidos en item:", item);
+          return;
+        }
+  
+        const newItem = {
+          order_id: newOrder.id,
+          product_id: item.products.id,
+          quantity: item.quantity,
+          price: item.products.price  // ✅ Incluir el precio del producto
+        };
+  
+        console.log("Insertando producto en order_items:", newItem);
+        return supabase.from('order_items').insert([newItem]);
+      });
+  
+      await Promise.all(orderItemsPromises);
+      console.log("Productos insertados correctamente.");
+  
+      // Redirigir al usuario a la página de checkout con el ID de la orden
+      navigate(`/checkout?orderId=${newOrder.id}`);
+  
+    } catch (error) {
+      console.error("Error durante checkout:", error);
+    }
   }
 
   return (
@@ -196,10 +243,10 @@ export default function Cart() {
           <div className="px-6 py-4 bg-gray-50">
             <div className="flex justify-between items-center">
               <div className="text-lg font-medium text-gray-900">
-                Total: ${total.toFixed(2)}
+                Total: ${cartItems.reduce((sum, item) => sum + (item.quantity * item.products.price), 0).toFixed(2)}
               </div>
               <button
-                onClick={() => navigate('/checkout')}
+                onClick={handleCheckout}
                 className="button-primary"
               >
                 Proceed to Checkout

@@ -10,7 +10,7 @@ import {
 export default function Home() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [categories, setCategories] = useState([])
+  
   const [selectedCategory, setSelectedCategory] = useState('')
   const [priceRange, setPriceRange] = useState({ min: '', max: '' })
   const [searchQuery, setSearchQuery] = useState('')

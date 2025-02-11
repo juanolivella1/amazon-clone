@@ -1,16 +1,21 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { 
   ShoppingCartIcon, 
   MagnifyingGlassIcon,
   MapPinIcon,
-  Bars3Icon
 } from '@heroicons/react/24/outline'
 
-export default function Navbar() {
+export default function Navbar({ products = [] }) {
   const { user, signOut } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
+  const navigate = useNavigate()
+
+  const handleSearch = (e) => {
+    e.preventDefault()
+    navigate('/search', { state: { searchQuery } })
+  }
 
   return (
     <div className="bg-amazon text-white">
@@ -34,7 +39,7 @@ export default function Navbar() {
         </div>
 
         {/* Search */}
-        <div className="hidden sm:flex items-center h-10 flex-grow cursor-pointer bg-amazon-yellow hover:bg-yellow-500 rounded">
+        <form onSubmit={handleSearch} className="hidden sm:flex items-center h-10 flex-grow cursor-pointer bg-amazon-yellow hover:bg-yellow-500 rounded">
           <input
             type="text"
             value={searchQuery}
@@ -42,10 +47,10 @@ export default function Navbar() {
             className="p-2 h-full w-6 flex-grow flex-shrink rounded-l focus:outline-none px-4"
             placeholder="Search Amazon"
           />
-          <div className="h-10 p-3 bg-amazon-yellow hover:bg-yellow-500 rounded-r">
+          <button type="submit" className="h-10 p-3 bg-amazon-yellow hover:bg-yellow-500 rounded-r">
             <MagnifyingGlassIcon className="h-4 text-amazon" />
-          </div>
-        </div>
+          </button>
+        </form>
 
         {/* Right */}
         <div className="text-white flex items-center text-xs space-x-6 mx-6 whitespace-nowrap">
@@ -68,11 +73,17 @@ export default function Navbar() {
             )}
           </div>
 
-          <Link to="/products" className="link">
-            <p>Returns</p>
-            <p className="font-extrabold md:text-sm">& Orders</p>
-          </Link>
+          {/* Mostrar solo si el usuario es admin */}
+          {user?.role === 'admin' && (
+            <Link to="/products" className="link">
+              <p className="font-extrabold md:text-sm">Añade Un Producto</p>
+            </Link>
+          )}
 
+          <Link to="/orders" className="link">
+            <p className="font-extrabold md:text-sm">Mis Pedidos</p>
+          </Link>
+          
           <Link to="/cart" className="relative link flex items-center">
             <span className="absolute top-0 right-0 md:right-10 h-4 w-4 bg-amazon-yellow text-center rounded-full text-black font-bold">
               0
@@ -81,19 +92,6 @@ export default function Navbar() {
             <p className="hidden md:inline font-extrabold md:text-sm mt-2">Cart</p>
           </Link>
         </div>
-      </div>
-
-      {/* Bottom nav */}
-      <div className="flex items-center space-x-3 p-2 pl-6 bg-amazon-light text-white text-sm">
-        <p className="link flex items-center">
-          <Bars3Icon className="h-6 mr-1" />
-          All
-        </p>
-        <p className="link">Today Deals</p>
-        <p className="link">Customer Service</p>
-        <p className="link">Registry</p>
-        <p className="link">Gift Cards</p>
-        <p className="link">Sell</p>
       </div>
     </div>
   )
