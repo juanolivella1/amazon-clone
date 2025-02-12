@@ -1,15 +1,46 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase' 
 import { 
   ShoppingCartIcon, 
   MagnifyingGlassIcon,
-  MapPinIcon
-} from '@heroicons/react/24/outline'
+  MapPinIcon,
+} from '@heroicons/react/24/outline';
 
-export default function Navbar() {
-  const { user, signOut } = useAuth()
-  const [searchQuery, setSearchQuery] = useState('')
+export default function Navbar({ products = [] }) {
+  const { user, signOut } = useAuth();
+  const [role, setRole] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
+
+  // Obtiene el rol del usuario desde Supabase
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!user) return;
+  
+      const { data, error } = await supabase
+        .from("admin_profiles")
+        .select("store_name") // Selecciona el campo correcto
+        .eq("user_id", user.id)
+        .maybeSingle(); // Evita error si no hay datos
+  
+      if (error) {
+        console.error("Error obteniendo el rol:", error.message);
+        return;
+      }
+  
+      console.log("Datos obtenidos:", data);
+      setRole(data?.store_name); // Guarda el rol correctamente
+    };
+  
+    fetchUserRole();
+  }, [user]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    navigate('/search', { state: { searchQuery } });
+  };
 
   return (
     <div className="bg-amazon text-white">
@@ -28,12 +59,12 @@ export default function Navbar() {
           <MapPinIcon className="h-6" />
           <div className="ml-1">
             <p className="text-xs text-gray-200">Deliver to</p>
-            <p className="text-sm font-bold">United States</p>
+            <p className="text-sm font-bold">Colombia</p>
           </div>
         </div>
 
         {/* Search */}
-        <div className="hidden sm:flex items-center h-10 flex-grow cursor-pointer bg-amazon-yellow hover:bg-yellow-500 rounded">
+        <form onSubmit={handleSearch} className="hidden sm:flex items-center h-10 flex-grow cursor-pointer bg-amazon-yellow hover:bg-yellow-500 rounded">
           <input
             type="text"
             value={searchQuery}
@@ -41,10 +72,10 @@ export default function Navbar() {
             className="p-2 h-full w-6 flex-grow flex-shrink rounded-l focus:outline-none px-4"
             placeholder="Search Amazon"
           />
-          <div className="h-10 p-3 bg-amazon-yellow hover:bg-yellow-500 rounded-r">
+          <button type="submit" className="h-10 p-3 bg-amazon-yellow hover:bg-yellow-500 rounded-r">
             <MagnifyingGlassIcon className="h-4 text-amazon" />
-          </div>
-        </div>
+          </button>
+        </form>
 
         {/* Right */}
         <div className="text-white flex items-center text-xs space-x-6 mx-6 whitespace-nowrap">
@@ -67,18 +98,16 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Mis Pedidos */}
+          {/* Mostrar solo si el usuario es admin */}
+          {role === 'administrador' && (
+  <Link to="/products" className="link">
+    <p className="font-extrabold md:text-sm">Añade Un Producto</p>
+  </Link>
+)}
           <Link to="/orders" className="link">
             <p className="font-extrabold md:text-sm">Mis Pedidos</p>
           </Link>
-
-          {/* Añade Productos (Solo para Admin) */}
-          {user?.role === 'admin' && (
-            <Link to="/products" className="link">
-              <p className="font-extrabold md:text-sm">Añade Productos</p>
-            </Link>
-          )}
-
+          
           <Link to="/cart" className="relative link flex items-center">
             <span className="absolute top-0 right-0 md:right-10 h-4 w-4 bg-amazon-yellow text-center rounded-full text-black font-bold">
               0
@@ -89,5 +118,5 @@ export default function Navbar() {
         </div>
       </div>
     </div>
-  )
+  );
 }

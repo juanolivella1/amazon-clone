@@ -5,55 +5,15 @@ import { useAuth } from '../contexts/AuthContext'
 
 export default function Cart() {
   const [cartItems, setCartItems] = useState([])
-  const [  loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const { user } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
     if (!user) return;
     fetchCartItems();
-  
-    // Suscripción a cambios en la tabla de orders
-    const orderSubscription = supabase
-      .channel('custom-all-channel')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `user_id=eq.${user.id}`
-        },
-        (payload) => {
-          console.log('Cambio detectado en orders:', payload);
-          fetchCartItems();
-        }
-      )
-      .subscribe();
-  
-    // Suscripción a cambios en la tabla de order_items
-    const itemsSubscription = supabase
-      .channel('custom-all-channel')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'order_items'
-        },
-        (payload) => {
-          console.log('Cambio detectado en order_items:', payload);
-          fetchCartItems();
-        }
-      )
-      .subscribe();
-  
-    // Limpiar suscripción cuando el componente se desmonte
-    return () => {
-      supabase.removeChannel(orderSubscription);
-      supabase.removeChannel(itemsSubscription);
-    };
-  }, [user]); 
+  }, [user]);
+
   async function fetchCartItems() {
     try {
       const { data: orders, error: orderError } = await supabase
@@ -134,7 +94,7 @@ export default function Cart() {
         console.error("No se encontró una orden pendiente.");
         return;
       }
-  
+
       // Obtener la orden actual antes de modificarla
       const { data: currentOrder, error: orderError } = await supabase
         .from('orders')

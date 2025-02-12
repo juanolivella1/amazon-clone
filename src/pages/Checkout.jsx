@@ -2,12 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { initMercadoPago, Wallet } from '@mercadopago/sdk-react'
+import { initMercadoPago, Wallet } from '@mercadopago/sdk-react';
 
-// Initialize MercadoPago with the public key
-initMercadoPago('TEST-d0f0e96d-6c3b-4150-8bd5-81bf28a8e0f6', {
-  locale: 'en-US'
-})
+// Reemplaza con una clave pública válida
+initMercadoPago('TEST-9cdd24c6-2911-4a17-a632-4fc08a0734e5', { locale: 'es-AR' });
 
 export default function Checkout() {
   const [preferenceId, setPreferenceId] = useState(null)
@@ -31,11 +29,22 @@ export default function Checkout() {
       navigate('/login')
       return
     }
-    fetchOrders()
-  }, [user, navigate])
+    fetchOrder()
+    if (order) {
+      createPreference();
+    }
+  }, [user, navigate, order])
 
-  async function fetchOrders() {
+  async function fetchOrder() {
     try {
+      const queryParams = new URLSearchParams(window.location.search);
+      const orderId = queryParams.get('orderId');
+  
+      if (!orderId) {
+        console.error("No se encontró orderId en la URL.");
+        return;
+      }
+  
       const { data, error } = await supabase
         .from("orders")
         .select(`
@@ -45,81 +54,85 @@ export default function Checkout() {
             products (id, name, image_url, price)
           )
         `)
-        .eq("user_id", user.id)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false });
+        .eq("id", orderId)
+        .single(); // 🔥 Ahora solo trae la orden específica
   
       if (error) throw error;
-  
-      if (!data || data.length === 0) {
-        console.warn("No se encontraron órdenes pendientes.");
-        return;
-      }
-  
-      setOrder(data[0]); // ✅ Guardar la primera orden pendiente
+      
+      setOrder(data);
     } catch (error) {
-      console.error("Error al obtener las órdenes:", error);
-      setError("Error loading orders");
+      console.error("Error al obtener la orden:", error);
+      setError("Error loading order");
     } finally {
       setLoading(false);
     }
   }
-
+  
   async function createPreference() {
     try {
-      setPaymentInitialized(false)
-
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // For demo purposes, we'll use a test preference ID
-      const testPreferenceId = 'TEST-d0f0e96d-6c3b-4150-8bd5-81bf28a8e0f6'
-      setPreferenceId(testPreferenceId)
-      setPaymentInitialized(true)
+      const response = await fetch("http://localhost:5000/create-preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: order.order_items.map(item => ({
+            title: item.products.name,
+            unit_price: item.products.price,
+            quantity: item.quantity
+          })),
+          back_urls: {
+            success: "http://localhost:5173/success",
+            failure: "http://localhost:5173/failure",
+            pending: "http://localhost:5173/pending"
+          },
+          auto_return: "approved"
+        })
+      });
+  
+      const data = await response.json();
+      if (data.id) {
+        setPreferenceId(data.id);
+        setPaymentInitialized(true);
+      } else {
+        console.error("Error creando preferencia:", data);
+      }
     } catch (error) {
-      console.error('Error creating preference:', error)
-      setError('Error initializing payment. Please try again.')
+      console.error("Error en createPreference:", error);
     }
   }
-
+  
   async function handlePayment() {
     if (!isValidShippingAddress()) {
-      setError('Please fill in all shipping information');
-      return;
+      setError('Please fill in all shipping information')
+      return
     }
-
+  
     try {
-      // Here you would typically:
-      // 1. Save shipping address
-      // 2. Update order status
-      // 3. Process payment
-      // For demo, we'll just show success
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      // Update order status to 'completed'
-      const { error: updateError } = await supabase
+      const queryParams = new URLSearchParams(window.location.search);
+      const orderId = queryParams.get('orderId');
+  
+      if (!orderId) {
+        console.error("No se encontró orderId en la URL.");
+        return;
+      }
+  
+      await new Promise(resolve => setTimeout(resolve, 1000));
+  
+      // 1️⃣ Actualizar el estado de la orden a "completed"
+      const { error: orderError } = await supabase
         .from('orders')
         .update({ status: 'completed' })
-        .eq('id', order.id)
-
-      if (updateError) throw updateError
-
-      // Delete items from cart
-      const { error: deleteError } = await supabase
-        .from('order_items')
-        .delete()
-        .eq('order_id', order.id)
-
-      if (deleteError) throw deleteError
-
-      // Redirigir al usuario a la página de pedidos
-      navigate('/orders')
+        .eq('id', orderId);
+  
+      if (orderError) throw orderError;
+  
+      // 2️⃣ Redirigir a la página de órdenes
+      navigate('/orders');
     } catch (error) {
-      console.error('Payment error:', error)
-      setError('Payment processing failed. Please try again.')
+      console.error('Payment error:', error);
+      setError('Payment processing failed. Please try again.');
     }
   }
-
+  
   function isValidShippingAddress() {
     return Object.values(shippingAddress).every(value => value.trim() !== '')
   }

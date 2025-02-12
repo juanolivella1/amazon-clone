@@ -11,59 +11,37 @@ export default function Orders() {
 
   useEffect(() => {
     if (!user) {
-      navigate('/login');
-      return;
+      navigate('/login')
+      return
     }
-    fetchOrders();
-  
-    // Suscripción a cambios en la tabla de orders
-    const orderSubscription = supabase
-      .channel('custom-all-channel')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `user_id=eq.${user.id}`
-        },
-        (payload) => {
-          console.log('Cambio detectado en orders:', payload);
-          fetchOrders();
-        }
-      )
-      .subscribe();
-  
-    // Limpiar suscripción cuando el componente se desmonte
-    return () => {
-      supabase.removeChannel(orderSubscription);
-    };
-  }, [user, navigate]);
+    fetchOrders()
+  }, [user, navigate])
 
   async function fetchOrders() {
     try {
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          *,
+          id, user_id, status, total, created_at,
           order_items (
-            *,
-            products (*)
+            id, order_id, quantity, price,
+            products (id, name, image_url, price)
           )
         `)
         .eq('user_id', user.id)
-        .eq('status', 'completed') // Solo mostrar órdenes completadas
+        .eq('status', 'completed') // 🔥 Solo mostrar órdenes completadas
         .order('created_at', { ascending: false });
-      if (error) throw error
-      setOrders(data || [])
+  
+      if (error) throw error;
+      setOrders(data || []);
     } catch (error) {
-      console.error('Error fetching orders:', error)
-      setOrders([])
+      console.error('Error fetching orders:', error);
+      setOrders([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
-
+  
   if (loading) {
     return (
       <div className="flex justify-center items-center h-screen">
