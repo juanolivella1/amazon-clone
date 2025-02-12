@@ -26,7 +26,7 @@ let connectionCheckPromise = null
 
 async function checkConnection() {
   try {
-    const { data, error } = await supabase.from('products').select('id').limit(1)
+    const {  error } = await supabase.from('products').select('id').limit(1)
     if (error) throw error
     isConnected = true
     return true

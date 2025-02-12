@@ -9,6 +9,7 @@ import Products from './pages/admin/Products'
 import { AuthProvider } from './contexts/AuthContext'
 import Orders from './pages/orders'
 import Chat from './components/Chat'
+import Success from './pages/Success' // ✨ Import the new page
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="/products" element={<Products />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/success" element={<Success />} />
         </Routes>
       </div>
     </AuthProvider>

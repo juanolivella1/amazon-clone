@@ -56,7 +56,7 @@ export default function Checkout() {
         return;
       }
   
-      setOrder(data); // ✅ Guardar todas las órdenes
+      setOrder(data[0]); // ✅ Guardar la primera orden pendiente
     } catch (error) {
       console.error("Error al obtener las órdenes:", error);
       setError("Error loading orders");
@@ -64,6 +64,7 @@ export default function Checkout() {
       setLoading(false);
     }
   }
+
   async function createPreference() {
     try {
       setPaymentInitialized(false)
@@ -83,8 +84,8 @@ export default function Checkout() {
 
   async function handlePayment() {
     if (!isValidShippingAddress()) {
-      setError('Please fill in all shipping information')
-      return
+      setError('Please fill in all shipping information');
+      return;
     }
 
     try {
@@ -94,7 +95,25 @@ export default function Checkout() {
       // 3. Process payment
       // For demo, we'll just show success
       await new Promise(resolve => setTimeout(resolve, 1000))
-      navigate('/success') // You'll need to create a success page
+
+      // Update order status to 'completed'
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ status: 'completed' })
+        .eq('id', order.id)
+
+      if (updateError) throw updateError
+
+      // Delete items from cart
+      const { error: deleteError } = await supabase
+        .from('order_items')
+        .delete()
+        .eq('order_id', order.id)
+
+      if (deleteError) throw deleteError
+
+      // Redirigir al usuario a la página de pedidos
+      navigate('/orders')
     } catch (error) {
       console.error('Payment error:', error)
       setError('Payment processing failed. Please try again.')
